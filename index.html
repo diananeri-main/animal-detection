@@ -553,7 +553,6 @@
       <button class="tab-btn" onclick="switchTab('img')">IMAGEN</button>
       <button id="start-btn" class="action-btn" onclick="initCamera()">INICIAR</button>
       <button id="stop-btn" class="action-btn hidden" onclick="stopCamera()">DETENER</button>
-      <button id="flip-btn" class="action-btn hidden" onclick="flipCamera()">VOLTEAR</button>
       <button id="analyze-btn" class="action-btn hidden" onclick="analyzeImage()">ANALIZAR</button>
       <button id="change-img-btn" class="action-btn hidden" onclick="triggerFileInput()">CAMBIAR IMAGEN</button>
       <div class="sound-toggle">
@@ -623,7 +622,6 @@
   let running = false;
   let currentTab = 'cam';
   let uploadedImage = null;
-  let facingMode = true; // true = frontal, false = trasera
 
   const soundState = {};
   const alertCounts = {};
@@ -691,7 +689,6 @@
       running = true;
       btn.classList.add('hidden');
       document.getElementById('stop-btn').classList.remove('hidden');
-      document.getElementById('flip-btn').classList.remove('hidden');
       loop();
     } catch(e) {
       btn.disabled = false;
@@ -717,23 +714,7 @@
     document.getElementById('camera-wrap').style.display = 'none';
     document.getElementById('placeholder').style.display = 'flex';
     document.getElementById('stop-btn').classList.add('hidden');
-    document.getElementById('flip-btn').classList.add('hidden');
     document.getElementById('start-btn').classList.remove('hidden');
-  }
-
-  async function flipCamera() {
-    facingMode = !facingMode;
-    running = false;
-    if (webcam) { webcam.stop(); webcam = null; }
-    const wrap = document.getElementById('camera-wrap');
-    wrap.innerHTML = '';
-    webcam = new tmImage.Webcam(640, 480, facingMode);
-    await webcam.setup();
-    await webcam.play();
-    wrap.appendChild(webcam.canvas);
-    wrap.style.display = 'block';
-    running = true;
-    loop();
   }
 
   // ── IMAGEN ──

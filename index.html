@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Animal Detection</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Barlow+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --white: #ffffff;
+      --off: #f4f4f2;
+      --border: #d8d8d4;
+      --mid: #9a9a94;
+      --dark: #1a1a18;
+      --red: #d93025;
+      --amber: #e8920a;
+      --green: #1a7a3e;
+      --blue: #1a4fa0;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--off);
+      color: var(--dark);
+      font-family: 'DM Mono', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── HEADER ── */
+    header {
+      background: var(--dark);
+      color: var(--white);
+      padding: 0 28px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      border-bottom: 3px solid var(--red);
+    }
+
+    .hdr-badge {
+      background: var(--red);
+      color: var(--white);
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 3px;
+      padding: 3px 8px;
+    }
+
+    header h1 {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 1.1rem;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--white);
+    }
+
+    .hdr-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .rec-dot {
+      width: 8px; height: 8px;
+      background: var(--red);
+      border-radius: 50%;
+      animation: blink 1.2s step-end infinite;
+    }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    .hdr-time { font-size: 0.72rem; color: var(--mid); letter-spacing: 1px; }
+
+    /* ── GRID ── */
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      grid-template-rows: auto auto;
+      gap: 0;
+      flex: 1;
+    }
+
+    @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+
+    /* ── VIEWPORT ── */
+    #viewport-panel {
+      grid-column: 1; grid-row: 1;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: var(--white);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-header {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--white);
+    }
+
+    .panel-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 0.7rem;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--mid);
+    }
+
+    .cam-id { font-size: 0.65rem; color: var(--mid); margin-left: auto; letter-spacing: 1px; }
+
+    #feed-area {
+      flex: 1;
+      position: relative;
+      background: #111;
+      min-height: 340px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #feed-area::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .bracket {
+      position: absolute;
+      width: 22px; height: 22px;
+      border-color: rgba(255,255,255,0.5);
+      border-style: solid;
+      z-index: 3;
+      pointer-events: none;
+    }
+    .bracket.tl { top: 12px; left: 12px; border-width: 2px 0 0 2px; }
+    .bracket.tr { top: 12px; right: 12px; border-width: 2px 2px 0 0; }
+    .bracket.bl { bottom: 12px; left: 12px; border-width: 0 0 2px 2px; }
+    .bracket.br { bottom: 12px; right: 12px; border-width: 0 2px 2px 0; }
+
+    #feed-stamp {
+      position: absolute;
+      bottom: 10px; left: 12px;
+      font-size: 0.6rem;
+      color: rgba(255,255,255,0.55);
+      letter-spacing: 1.5px;
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    #feed-cam-label {
+      position: absolute;
+      top: 10px; left: 12px;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 3px;
+      color: rgba(255,255,255,0.55);
+      z-index: 3;
+      pointer-events: none;
+    }
+
+    #camera-wrap, #drop-zone {
+      width: 100%; height: 100%;
+      position: absolute; inset: 0;
+    }
+
+    #camera-wrap { display: none; }
+
+    #camera-wrap canvas, #camera-wrap video {
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+
+    #placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      z-index: 2;
+    }
+
+    #placeholder svg { opacity: 0.25; }
+
+    #placeholder p {
+      font-size: 0.65rem;
+      color: rgba(255,255,255,0.35);
+      letter-spacing: 2px;
+    }
+
+    #drop-zone {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      cursor: pointer;
+      transition: background 0.2s;
+      z-index: 2;
+    }
+
+    #drop-zone.dragover { background: rgba(255,255,255,0.05); }
+
+    #preview-img {
+      position: absolute;
+      inset: 0;
+      width: 100%; height: 100%;
+      object-fit: contain;
+      display: none;
+    }
+
+    #preview-img.visible { display: block; }
+
+    #drop-hint {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      z-index: 2;
+    }
+
+    #drop-hint p {
+      font-size: 0.62rem;
+      color: rgba(255,255,255,0.35);
+      letter-spacing: 2px;
+      text-align: center;
+      line-height: 1.8;
+    }
+
+    #upload-file-btn {
+      padding: 6px 18px;
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.25);
+      color: rgba(255,255,255,0.5);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 2px;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    #upload-file-btn:hover { border-color: rgba(255,255,255,0.6); color: rgba(255,255,255,0.8); }
+
+    /* ── CONTROLS BAR ── */
+    #controls-bar {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--white);
+      flex-wrap: wrap;
+    }
+
+    .tab-btn {
+      padding: 6px 16px;
+      border: 1px solid var(--border);
+      background: var(--off);
+      color: var(--mid);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 2px;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-transform: uppercase;
+    }
+
+    .tab-btn.active { background: var(--dark); border-color: var(--dark); color: var(--white); }
+
+    .action-btn {
+      padding: 6px 20px;
+      border: 1px solid var(--dark);
+      background: var(--dark);
+      color: var(--white);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 2px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: background 0.15s;
+    }
+
+    .action-btn:hover { background: #333; }
+    .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .action-btn.hidden { display: none; }
+
+    .sound-toggle {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.62rem;
+      color: var(--mid);
+      letter-spacing: 1px;
+    }
+
+    .sound-toggle input { accent-color: var(--dark); }
+
+    /* ── SIDE PANEL ── */
+    #side-panel {
+      grid-column: 2; grid-row: 1 / 3;
+      border-left: 1px solid var(--border);
+      background: var(--white);
+      display: flex;
+      flex-direction: column;
+    }
+
+    @media (max-width: 700px) {
+      #side-panel { grid-column: 1; grid-row: auto; border-left: none; border-top: 1px solid var(--border); }
+    }
+
+    #detection-block {
+      padding: 20px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    #det-status {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.62rem;
+      font-weight: 600;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 14px;
+    }
+
+    #alert-box {
+      border: 1.5px solid var(--border);
+      padding: 16px;
+      text-align: center;
+      transition: border-color 0.3s, background 0.3s;
+    }
+
+    #alert-box.danger { border-color: var(--red); background: #fff5f5; }
+    #alert-box.warn   { border-color: var(--amber); background: #fffbf0; }
+
+    #animal-name {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 2.6rem;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--mid);
+      line-height: 1;
+    }
+
+    #alert-box.danger #animal-name { color: var(--red); }
+    #alert-box.warn   #animal-name { color: var(--amber); }
+
+    #confidence-val { font-size: 0.65rem; color: var(--mid); margin-top: 6px; letter-spacing: 1px; }
+
+    #status-msg {
+      font-size: 0.62rem;
+      letter-spacing: 2px;
+      margin-top: 8px;
+      color: var(--mid);
+      text-transform: uppercase;
+    }
+
+    #alert-box.danger #status-msg { color: var(--red); }
+    #alert-box.warn   #status-msg { color: var(--amber); }
+
+    /* ── BARS ── */
+    #bars-block { padding: 18px 18px 0; }
+
+    .bar-section-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.62rem;
+      font-weight: 600;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--mid);
+      margin-bottom: 14px;
+    }
+
+    .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 11px; }
+
+    .bar-label { font-size: 0.65rem; width: 58px; flex-shrink: 0; color: var(--dark); letter-spacing: 0.5px; }
+
+    .bar-track { flex: 1; height: 4px; background: var(--off); border: 1px solid var(--border); }
+
+    .bar-fill { height: 100%; width: 0%; transition: width 0.3s ease; }
+
+    .bar-fill.ardilla { background: var(--amber); }
+    .bar-fill.gato    { background: var(--blue); }
+    .bar-fill.paloma  { background: #7a5ea8; }
+    .bar-fill.perro   { background: var(--green); }
+    .bar-fill.rata    { background: var(--red); }
+
+    .bar-pct { font-size: 0.62rem; width: 34px; text-align: right; color: var(--mid); }
+
+    /* ── CONTADOR ── */
+    #counter-block {
+      padding: 16px 18px;
+      border-top: 1px solid var(--border);
+      margin-top: 6px;
+    }
+
+    #counter-block .bar-section-label { margin-bottom: 12px; }
+
+    .counter-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 5px 0;
+      border-bottom: 1px solid var(--off);
+      font-size: 0.65rem;
+    }
+
+    .counter-row:last-child { border-bottom: none; }
+
+    .counter-animal { color: var(--dark); }
+
+    .counter-badge {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 0.9rem;
+      letter-spacing: 1px;
+      color: var(--mid);
+      min-width: 24px;
+      text-align: right;
+    }
+
+    .counter-badge.active-count { color: var(--dark); }
+    .counter-badge.rata-count   { color: var(--red); }
+
+    /* reset btn */
+    #reset-counter-btn {
+      margin-top: 10px;
+      padding: 4px 12px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--mid);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.58rem;
+      letter-spacing: 2px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    #reset-counter-btn:hover { border-color: var(--dark); color: var(--dark); }
+
+    /* ── LOG ── */
+    #log-panel { grid-column: 1; grid-row: 2; border-right: 1px solid var(--border); background: var(--white); }
+
+    #log-inner {
+      height: 160px;
+      overflow-y: auto;
+      padding: 10px 16px;
+    }
+
+    #log-inner::-webkit-scrollbar { width: 3px; }
+    #log-inner::-webkit-scrollbar-thumb { background: var(--border); }
+
+    .log-entry {
+      display: flex;
+      gap: 14px;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--off);
+      font-size: 0.62rem;
+    }
+
+    .log-time   { color: var(--mid); flex-shrink: 0; }
+    .log-source { color: var(--mid); }
+    .log-animal { color: var(--dark); font-weight: 500; flex: 1; }
+    .log-pct    { color: var(--dark); }
+    .log-pct.high { color: var(--red); }
+
+    #log-empty { font-size: 0.62rem; color: var(--mid); letter-spacing: 2px; padding: 10px 0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="hdr-badge">SEC</div>
+  <h1>Animal Detection</h1>
+  <div class="hdr-right">
+    <div class="rec-dot"></div>
+    <div class="hdr-time" id="hdr-clock">--:--:--</div>
+  </div>
+</header>
+
+<div class="grid">
+
+  <!-- FEED -->
+  <div id="viewport-panel">
+    <div class="panel-header">
+      <div class="panel-label">Feed en vivo</div>
+      <div class="cam-id">CAM-01</div>
+    </div>
+
+    <div id="feed-area">
+      <div class="bracket tl"></div>
+      <div class="bracket tr"></div>
+      <div class="bracket bl"></div>
+      <div class="bracket br"></div>
+      <div id="feed-cam-label">CAM-01</div>
+      <div id="feed-stamp"></div>
+
+      <div id="placeholder">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+          <rect x="4" y="10" width="32" height="24" rx="2" stroke="white" stroke-width="2"/>
+          <circle cx="44" cy="16" r="4" stroke="white" stroke-width="2"/>
+          <line x1="36" y1="18" x2="40" y2="18" stroke="white" stroke-width="2"/>
+          <circle cx="20" cy="22" r="6" stroke="white" stroke-width="2"/>
+        </svg>
+        <p>SIN SEÑAL</p>
+      </div>
+
+      <div id="camera-wrap"></div>
+
+      <div id="drop-zone"
+           ondragover="onDragOver(event)"
+           ondragleave="onDragLeave(event)"
+           ondrop="onDrop(event)"
+           onclick="triggerFileInput()">
+        <img id="preview-img" alt="preview" />
+        <div id="drop-hint">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+            <rect x="2" y="6" width="28" height="20" rx="2" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>
+            <path d="M16 11v10M11 16l5 5 5-5" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <p>ARRASTRA IMAGEN AQUÍ<br>O SELECCIONA ARCHIVO</p>
+          <button id="upload-file-btn" onclick="event.stopPropagation(); triggerFileInput()">SELECCIONAR</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="controls-bar">
+      <button class="tab-btn active" onclick="switchTab('cam')">CÁMARA</button>
+      <button class="tab-btn" onclick="switchTab('img')">IMAGEN</button>
+      <button id="start-btn" class="action-btn" onclick="initCamera()">INICIAR</button>
+      <button id="stop-btn" class="action-btn hidden" onclick="stopCamera()">DETENER</button>
+      <button id="analyze-btn" class="action-btn hidden" onclick="analyzeImage()">ANALIZAR</button>
+      <button id="change-img-btn" class="action-btn hidden" onclick="triggerFileInput()">CAMBIAR IMAGEN</button>
+      <div class="sound-toggle">
+        <input type="checkbox" id="sound-cb" checked />
+        <label for="sound-cb">SONIDO</label>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIDE -->
+  <div id="side-panel">
+    <div id="detection-block">
+      <div id="det-status">Detección actual</div>
+      <div id="alert-box">
+        <div id="animal-name">—</div>
+        <div id="confidence-val">esperando señal</div>
+        <div id="status-msg">sin alerta</div>
+      </div>
+    </div>
+
+    <div id="bars-block">
+      <div class="bar-section-label">Probabilidades</div>
+      <div id="bars-container"></div>
+    </div>
+
+    <!-- CONTADOR -->
+    <div id="counter-block">
+      <div class="bar-section-label">Alertas por animal</div>
+      <div id="counter-container"></div>
+      <button id="reset-counter-btn" onclick="resetCounters()">RESETEAR</button>
+    </div>
+  </div>
+
+  <!-- LOG -->
+  <div id="log-panel">
+    <div class="panel-header">
+      <div class="panel-label">Registro de eventos</div>
+    </div>
+    <div id="log-inner">
+      <div id="log-empty">SIN EVENTOS REGISTRADOS</div>
+    </div>
+  </div>
+
+</div>
+
+<input type="file" id="file-input" accept="image/*" style="display:none" onchange="onFileSelect(event)" />
+
+<script>
+  const MODEL_URL  = './model.json';
+  const META_URL   = './metadata.json';
+  const SOUNDS_DIR = './sounds/';
+  const THRESHOLD  = 0.65;
+  const SOUND_DURATION = 6000;
+
+  const SOUND_FILES = {
+    'Ardilla': ['ardilla-1.wav','ardilla-2.wav','ardilla-3.wav'],
+    'Gato':    ['gato-1.wav','gato-2.wav','gato-3.mp3'],
+    'Paloma':  ['paloma-1.wav','paloma-2.wav','paloma-3.mp3'],
+    'Perro':   ['perro-1.wav','perro-2.wav','perro-3.wav'],
+    'Rata':    ['rata-1.mp3','rata-2.wav','rata-3.wav'],
+  };
+
+  const COLOR_CLASS = { Ardilla:'ardilla', Gato:'gato', Paloma:'paloma', Perro:'perro', Rata:'rata' };
+  const ALERT_CLASS = { Ardilla:'warn', Gato:'warn', Paloma:'warn', Perro:'warn', Rata:'danger' };
+
+  let model, labels, webcam;
+  let running = false;
+  let currentTab = 'cam';
+  let uploadedImage = null;
+
+  const soundState = {};
+  const alertCounts = {};
+
+  // ── RELOJ ──
+  function updateClock() {
+    const now = new Date();
+    document.getElementById('hdr-clock').textContent = now.toLocaleTimeString('es-MX', {hour12:false});
+    const stamp = document.getElementById('feed-stamp');
+    if (stamp) stamp.textContent = now.toLocaleDateString('es-MX') + '  ' + now.toLocaleTimeString('es-MX', {hour12:false});
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  // ── TABS ──
+  function switchTab(tab) {
+    currentTab = tab;
+    if (tab === 'img' && running) {
+      running = false;
+      if (webcam) webcam.stop();
+    }
+
+    const camWrap  = document.getElementById('camera-wrap');
+    const dropZone = document.getElementById('drop-zone');
+    const ph       = document.getElementById('placeholder');
+
+    camWrap.style.display  = tab === 'cam' && running ? 'block' : 'none';
+    dropZone.style.display = tab === 'img' ? 'flex' : 'none';
+    if (ph) ph.style.display = (tab === 'cam' && !running) ? 'flex' : 'none';
+
+    document.getElementById('start-btn').classList.toggle('hidden', tab === 'img');
+    document.getElementById('analyze-btn').classList.toggle('hidden', tab === 'cam' || !uploadedImage);
+
+    document.querySelectorAll('.tab-btn').forEach((b, i) => {
+      b.classList.toggle('active', (i===0 && tab==='cam') || (i===1 && tab==='img'));
+    });
+  }
+
+  // ── CÁMARA ──
+  async function initCamera() {
+    const btn = document.getElementById('start-btn');
+    btn.disabled = true;
+    btn.textContent = 'CARGANDO...';
+
+    try {
+      if (!model) {
+        model = await tmImage.load(MODEL_URL, META_URL);
+        labels = model.getClassLabels();
+        buildBars(labels);
+        buildCounters(labels);
+      }
+
+      webcam = new tmImage.Webcam(640, 480, true);
+      await webcam.setup();
+      await webcam.play();
+
+      const wrap = document.getElementById('camera-wrap');
+      wrap.innerHTML = '';
+      wrap.appendChild(webcam.canvas);
+      wrap.style.display = 'block';
+
+      const ph = document.getElementById('placeholder');
+      if (ph) ph.style.display = 'none';
+
+      running = true;
+      btn.classList.add('hidden');
+      document.getElementById('stop-btn').classList.remove('hidden');
+      loop();
+    } catch(e) {
+      btn.disabled = false;
+      btn.textContent = 'ERROR';
+      alert('Error: ' + e.message);
+    }
+  }
+
+  async function loop() {
+    if (!running) return;
+    webcam.update();
+    const preds = await model.predict(webcam.canvas);
+    updateBars(preds);
+    const top = preds.reduce((a,b) => a.probability > b.probability ? a : b);
+    updateResult(top);
+    if (top.probability >= THRESHOLD) playSound(top.className);
+    requestAnimationFrame(loop);
+  }
+
+  function stopCamera() {
+    running = false;
+    if (webcam) { webcam.stop(); webcam = null; }
+    document.getElementById('camera-wrap').style.display = 'none';
+    document.getElementById('placeholder').style.display = 'flex';
+    document.getElementById('stop-btn').classList.add('hidden');
+    document.getElementById('start-btn').classList.remove('hidden');
+  }
+
+  // ── IMAGEN ──
+  function triggerFileInput() { document.getElementById('file-input').click(); }
+
+  function onFileSelect(e) {
+    const file = e.target.files[0];
+    if (file) loadImageFile(file);
+  }
+
+  function onDragOver(e) {
+    e.preventDefault();
+    document.getElementById('drop-zone').classList.add('dragover');
+  }
+
+  function onDragLeave() { document.getElementById('drop-zone').classList.remove('dragover'); }
+
+  function onDrop(e) {
+    e.preventDefault();
+    document.getElementById('drop-zone').classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) loadImageFile(file);
+  }
+
+  function loadImageFile(file) {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = document.getElementById('preview-img');
+      img.src = ev.target.result;
+      img.classList.add('visible');
+      document.getElementById('drop-hint').style.display = 'none';
+      uploadedImage = img;
+      document.getElementById('analyze-btn').classList.remove('hidden');
+      document.getElementById('change-img-btn').classList.remove('hidden');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function analyzeImage() {
+    if (!uploadedImage) return;
+    const btn = document.getElementById('analyze-btn');
+    btn.textContent = 'ANALIZANDO...';
+    btn.disabled = true;
+
+    try {
+      if (!model) {
+        model = await tmImage.load(MODEL_URL, META_URL);
+        labels = model.getClassLabels();
+        buildBars(labels);
+        buildCounters(labels);
+      }
+      const preds = await model.predict(uploadedImage);
+      updateBars(preds);
+      const top = preds.reduce((a,b) => a.probability > b.probability ? a : b);
+      updateResult(top);
+      if (top.probability >= THRESHOLD) playSound(top.className);
+    } catch(e) {
+      alert('Error: ' + e.message);
+    }
+
+    btn.textContent = 'ANALIZAR';
+    btn.disabled = false;
+  }
+
+  // ── SONIDO ──
+  function playSound(label) {
+    if (!document.getElementById('sound-cb').checked) return;
+
+    const now = Date.now();
+    const s = soundState[label] || (soundState[label] = { active: false, endTime: 0, audio: null });
+
+    if (s.active && now < s.endTime) return;
+
+    const files = SOUND_FILES[label];
+    if (!files || !files.length) return;
+
+    const file = files[Math.floor(Math.random() * files.length)];
+
+    s.active = true;
+    s.endTime = now + SOUND_DURATION;
+
+    if (s.audio) { s.audio.pause(); s.audio = null; }
+
+    const audio = new Audio(SOUNDS_DIR + file);
+    audio.loop = true;
+    s.audio = audio;
+    audio.play().catch(()=>{});
+
+    setTimeout(() => {
+      audio.pause();
+      audio.loop = false;
+      s.active = false;
+      s.audio = null;
+    }, SOUND_DURATION);
+  }
+
+  // ── BARRAS ──
+  function buildBars(labels) {
+    const c = document.getElementById('bars-container');
+    c.innerHTML = '';
+    labels.forEach(lbl => {
+      const cls = COLOR_CLASS[lbl] || 'gato';
+      c.innerHTML += `
+        <div class="bar-row">
+          <div class="bar-label">${lbl}</div>
+          <div class="bar-track">
+            <div class="bar-fill ${cls}" id="bar-${lbl}"></div>
+          </div>
+          <div class="bar-pct" id="pct-${lbl}">0%</div>
+        </div>`;
+    });
+  }
+
+  function updateBars(preds) {
+    preds.forEach(p => {
+      const pct = Math.round(p.probability * 100);
+      const b = document.getElementById('bar-' + p.className);
+      const t = document.getElementById('pct-' + p.className);
+      if (b) b.style.width = pct + '%';
+      if (t) t.textContent = pct + '%';
+    });
+  }
+
+  // ── CONTADOR ──
+  function buildCounters(labels) {
+    const c = document.getElementById('counter-container');
+    c.innerHTML = '';
+    labels.forEach(lbl => {
+      alertCounts[lbl] = 0;
+      c.innerHTML += `
+        <div class="counter-row">
+          <span class="counter-animal">${lbl}</span>
+          <span class="counter-badge" id="cnt-${lbl}">0</span>
+        </div>`;
+    });
+  }
+
+  function incrementCounter(animal) {
+    alertCounts[animal] = (alertCounts[animal] || 0) + 1;
+    const el = document.getElementById('cnt-' + animal);
+    if (el) el.textContent = alertCounts[animal];
+
+    const maxVal = Math.max(...Object.values(alertCounts));
+    if (labels) labels.forEach(lbl => {
+      const badge = document.getElementById('cnt-' + lbl);
+      if (!badge) return;
+      badge.classList.remove('active-count', 'rata-count');
+      if (alertCounts[lbl] === maxVal && maxVal > 0) badge.classList.add('rata-count');
+    });
+  }
+
+  function resetCounters() {
+    if (labels) labels.forEach(lbl => {
+      alertCounts[lbl] = 0;
+      const el = document.getElementById('cnt-' + lbl);
+      if (el) { el.textContent = '0'; el.classList.remove('active-count', 'rata-count'); }
+    });
+  }
+
+  // ── RESULTADO ──
+  function updateResult(top) {
+    const box  = document.getElementById('alert-box');
+    const name = document.getElementById('animal-name');
+    const conf = document.getElementById('confidence-val');
+    const msg  = document.getElementById('status-msg');
+    const pct  = Math.round(top.probability * 100);
+    const cls  = ALERT_CLASS[top.className] || 'warn';
+    const isAlert = top.probability >= THRESHOLD;
+
+    box.className = isAlert ? cls : '';
+    name.textContent = top.className;
+    conf.textContent = `Confianza: ${pct}%`;
+    msg.textContent  = isAlert ? '⚠ ALERTA DETECTADA' : 'sin alerta';
+
+    if (isAlert) {
+      addLog(top.className, pct);
+      incrementCounter(top.className);
+    }
+  }
+
+  let lastLogAnimal = '', lastLogTime = 0;
+  function addLog(animal, pct) {
+    const now = Date.now();
+    if (animal === lastLogAnimal && now - lastLogTime < 3000) return;
+    lastLogAnimal = animal; lastLogTime = now;
+
+    const empty = document.getElementById('log-empty');
+    if (empty) empty.remove();
+
+    const time = new Date().toLocaleTimeString('es-MX', {hour12:false});
+    const src  = currentTab === 'cam' ? 'CAM-01' : 'IMG';
+    const list = document.getElementById('log-inner');
+    const div  = document.createElement('div');
+    div.className = 'log-entry';
+    div.innerHTML = `
+      <span class="log-time">${time}</span>
+      <span class="log-source">${src}</span>
+      <span class="log-animal">${animal}</span>
+      <span class="log-pct ${pct>=65?'high':''}">${pct}%</span>`;
+    list.prepend(div);
+    while (list.children.length > 60) list.removeChild(list.lastChild);
+  }
+</script>
+
+  <footer style="text-align:center; padding: 10px; font-size:0.58rem; color:var(--mid); letter-spacing:2px; border-top:1px solid var(--border); background:var(--white);">
+    ELABORADO POR MALDONADO NERI DIANA DEL GRUPO 961
+  </footer>
+</body>
+</html>

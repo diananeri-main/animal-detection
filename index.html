@@ -891,15 +891,16 @@
 
     if (isAlert) {
       addLog(top.className, pct);
-      incrementCounter(top.className);
     }
   }
 
   let lastLogAnimal = '', lastLogTime = 0;
   function addLog(animal, pct) {
     const now = Date.now();
-    if (animal === lastLogAnimal && now - lastLogTime < 3000) return;
+    if (now - lastLogTime < 10000) return;
+    if (animal === lastLogAnimal && now - lastLogTime < 10000) return;
     lastLogAnimal = animal; lastLogTime = now;
+    incrementCounter(animal);
 
     const empty = document.getElementById('log-empty');
     if (empty) empty.remove();
